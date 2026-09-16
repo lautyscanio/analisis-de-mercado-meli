@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mercadata — Inteligencia de mercado ML</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  {% if configured and token_ok %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  {% endif %}
+</head>
+<body>
+
+{% if not configured %}
+<div class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+      </svg>
+    </div>
+    <h1 class="auth-title">Configurá las credenciales</h1>
+    <p class="auth-sub">Copiá <code>.env.example</code> → <code>.env</code> y completá con tu App ID y Secret de
+      <a href="https://developers.mercadolibre.com.ar/devcenter" target="_blank" rel="noopener" style="color:var(--accent-2)">ML Developers</a>.
+    </p>
+    <div class="setup-steps">
+      <div class="setup-step"><span class="step-num">1</span><div><div class="step-title">Obtené tu App ID y Secret</div><div class="step-body">Del portal de ML Developers → tu app → Credenciales.</div></div></div>
+      <div class="setup-step"><span class="step-num">2</span><div><div class="step-title">Completá el <code>.env</code></div><div class="step-body"><code>ML_CLIENT_ID=tu_app_id</code><br><code>ML_CLIENT_SECRET=tu_secret</code></div></div></div>
+      <div class="setup-step"><span class="step-num">3</span><div><div class="step-title">Reiniciá con <code>start.bat</code></div><div class="step-body">No necesitás configurar redirect URI.</div></div></div>
+    </div>
+  </div>
+</div>
+
+{% elif not token_ok %}
+<div class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+    </div>
+    <h1 class="auth-title">Conectate con Mercado Libre</h1>
+    <p class="auth-sub">Necesitás autorizar la app una vez para consultar datos del marketplace.</p>
+    <a href="/auth/setup" class="btn-connect">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15,3 21,3 21,9"/><polyline points="9,21 3,21 3,15"/>
+        <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+      </svg>
+      Ir a la página de conexión
+    </a>
+  </div>
+</div>
+
+{% else %}
+<div class="app-shell">
+
+  <!-- ══════════ SIDEBAR ══════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">
+        <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+          <path d="M4 20 L10 11 L15 16 L26 5" stroke="url(#gradLine)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <circle cx="26" cy="5" r="2.4" fill="#9c8cf2"/>
+          <circle cx="4" cy="20" r="2" fill="#4b4d57"/>
+          <defs>
+            <linearGradient id="gradLine" x1="4" y1="20" x2="26" y2="5" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#4b4d57"/><stop offset="1" stop-color="#9c8cf2"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <div class="brand-wordmark">
+        <span class="w1">merca<em>data</em></span>
+        <span class="w2">Inteligencia de mercado</span>
+      </div>
+    </div>
+
+    <!-- Navegación entre vistas -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Vistas</div>
+      <div class="nav-list">
+        <div class="nav-item is-active" data-view="dashboard">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          Panel general
+        </div>
+        <div class="nav-item" data-view="charts">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+          Gráficos
+        </div>
+        <div class="nav-item" data-view="overview">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+          Mapa del rubro
+        </div>
+        <div class="nav-item" data-view="mybiz">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8.3l-5.3 5.3-3-3-4.4 4.4"/></svg>
+          Mi negocio
+        </div>
+        <div class="nav-item" data-view="lookup">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4a1 1 0 0 1 1-1h3M20 7V4a1 1 0 0 0-1-1h-3M4 17v3a1 1 0 0 0 1 1h3M20 17v3a1 1 0 0 1-1 1h-3"/><circle cx="12" cy="12" r="3.2"/></svg>
+          Analizar publicación
+        </div>
+      </div>
+    </div>
+
+    <!-- Rubros -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">Rubros</div>
+      <div class="nav-list" id="rubrosNav"></div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="conn-chip">
+        <span class="conn-dot"></span>
+        <span class="conn-text">Conectado como <strong>{{ nickname }}</strong></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══════════ CONTENIDO ══════════ -->
+  <div class="content">
+    <div class="topbar">
+      <div class="topbar-title">
+        <h1 id="topbarTitle">Materiales Eléctricos</h1>
+        <span id="topbarSub">Panel general · Argentina</span>
+      </div>
+      <div class="progress-pill" id="progressPill" style="display:none">
+        <span class="progress-spinner"></span>
+        <span id="progressLabel">Cargando…</span>
+      </div>
+    </div>
+
+    <main class="main">
+
+      <!-- Filtros: compartidos por ambas vistas -->
+      <section class="filters-bar">
+        <div class="filter-primary">
+          <div class="search-wrap">
+            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="inputQ" class="search-input" placeholder="Buscar producto puntual… o dejá vacío para usar la categoría"
+                   autocomplete="off" spellcheck="false">
+            <kbd class="search-hint">Enter</kbd>
+          </div>
+        </div>
+        <div class="filter-secondary">
+          <div class="fg">
+            <div class="select-label">Mi nickname en ML</div>
+            <input type="text" id="inputMyNick" class="f-select" placeholder="Ej: MI_TIENDA_AR"
+                   title="Tus publicaciones se marcarán en verde">
+          </div>
+          <div class="select-wrap">
+            <div class="select-label">Categoría</div>
+            <select id="selCat" class="f-select"></select>
+          </div>
+          <div class="select-wrap" id="sortWrap">
+            <div class="select-label">Ordenar</div>
+            <select id="selSort" class="f-select">
+              <option value="sellers">Más disputados</option>
+              <option value="price_asc">Menor precio</option>
+              <option value="price_desc">Mayor precio</option>
+            </select>
+          </div>
+          <button id="btnSearch" class="btn-search" onclick="App.search()">Analizar</button>
+        </div>
+      </section>
+
+      <div class="error-banner" id="errorBanner" style="display:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="7.86,2 16.14,2 22,7.86 22,16.14 16.14,22 7.86,22 2,16.14 2,7.86"/>
+          <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span id="errorText"></span>
+        <button class="banner-close" onclick="document.getElementById('errorBanner').style.display='none'">✕</button>
+      </div>
+
+      <!-- ══════════ VISTA: PANEL GENERAL ══════════ -->
+      <div class="view is-active" id="view-dashboard">
+
+        <section class="metrics-grid">
+          <div class="metric-card" id="mTotal">
+            <div class="metric-label">Productos en catálogo</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Esperando análisis</div>
+          </div>
+          <div class="metric-card" id="mRange">
+            <div class="metric-label">Rango de precios</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Precio más bajo por producto</div>
+          </div>
+          <div class="metric-card" id="mLeader">
+            <div class="metric-label">Vendedor dominante</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Gana en precio con más frecuencia</div>
+          </div>
+          <div class="metric-card" id="mTop">
+            <div class="metric-label">Producto más disputado</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Mayor cantidad de competidores</div>
+          </div>
+        </section>
+
+        <!-- Insights -->
+        <section class="section" id="seccion-insights" style="display:none">
+          <div class="section-head">
+            <div class="section-head-left">
+              <div class="section-icon" style="background:var(--accent-dim);color:var(--accent-2)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>
+              </div>
+              <div class="section-title-wrap">
+                <div class="section-title">Lecturas del rubro</div>
+                <div class="section-sub">Conclusiones derivadas de los datos cargados</div>
+              </div>
+            </div>
+          </div>
+          <div class="section-body" id="insightsBody"></div>
+        </section>
+
+        <!-- Alertas de precio + Vendedor dominante en el tiempo -->
+        <div class="grid-2">
+          <section class="section" id="seccion-alertas" style="display:none">
+            <div class="section-head">
+              <div class="section-head-left">
+                <div class="section-icon" style="background:var(--orange-dim);color:var(--orange)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                </div>
+                <div class="section-title-wrap">
+                  <div class="section-title">Movimientos de precio</div>
+                  <div class="section-sub">Vs. la última vez que se analizó este rubro</div>
+                </div>
+              </div>
+            </div>
+            <div class="section-body no-pad" id="alertsBody"></div>
+          </section>
+
+          <section class="section" id="seccion-vendedor-trend" style="display:none">
+            <div class="section-head">
+              <div class="section-head-left">
+                <div class="section-icon" style="background:var(--red-dim);color:var(--red)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                </div>
+                <div class="section-title-wrap">
+                  <div class="section-title">Vendedor a vigilar — tendencia</div>
+                  <div class="section-sub" id="sellerTrendSubtitle">En cuántos productos aparece y cuántas veces gana por precio, en el tiempo</div>
+                </div>
+              </div>
+            </div>
+            <div class="chart-box" style="padding:12px 18px 18px;height:180px"><canvas id="chartSellerTrend"></canvas></div>
+          </section>
+        </div>
+
+        <!-- Tendencias + Marcas -->
+        <div class="grid-2">
+          <section class="section" id="seccion-tendencias">
+            <div class="section-head">
+              <div class="section-head-left">
+                <div class="section-icon" style="background:var(--accent-dim);color:var(--accent-2)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg>
+                </div>
+                <div class="section-title-wrap">
+                  <div class="section-title">Tendencias de búsqueda</div>
+                  <div class="section-sub" id="trendsSubtitle">Del rubro seleccionado</div>
+                </div>
+              </div>
+              <span class="section-tag tag-live">En vivo</span>
+            </div>
+            <div class="section-body no-pad" id="trendsBody">
+              <div class="empty-state"><div class="empty-title">Cargando tendencias…</div></div>
+            </div>
+          </section>
+
+          <section class="section" id="seccion-marcas">
+            <div class="section-head">
+              <div class="section-head-left">
+                <div class="section-icon" style="background:var(--blue-dim);color:var(--blue)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2.59 12.58V2h10.59l7.41 7.41a2 2 0 0 1 0 2.83z"/><circle cx="7" cy="7" r="1.5"/></svg>
+                </div>
+                <div class="section-title-wrap">
+                  <div class="section-title">Marcas del rubro</div>
+                  <div class="section-sub">Presencia en el catálogo</div>
+                </div>
+              </div>
+              <span class="section-tag tag-live">En vivo</span>
+            </div>
+            <div class="section-body no-pad" id="marcasBody">
+              <div class="empty-state"><div class="empty-title">Analizá una categoría para ver las marcas</div></div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Productos y competencia -->
+        <section class="section" id="seccion-competencia">
+          <div class="section-head">
+            <div class="section-head-left">
+              <div class="section-icon" style="background:var(--green-dim);color:var(--green)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </div>
+              <div class="section-title-wrap">
+                <div class="section-title">Productos y competencia</div>
+                <div class="section-sub" id="resultsCount">Elegí una categoría y hacé clic en Analizar</div>
+              </div>
+            </div>
+            <button class="btn-export" id="btnExport" onclick="App.export()" style="display:none">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Exportar CSV
+            </button>
+          </div>
+
+          <div class="data-notice" style="margin:14px 18px 0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span><strong id="rankExplain">Ordenado por cantidad de vendedores compitiendo</strong> — cuantos más vendedores tiene un producto, más demanda probada tiene, pero más difícil es ganar por precio. Hacé clic en cualquier fila para ver todos los competidores. Pasá el mouse por el número de fila para tildarlo y comparar varios.</span>
+          </div>
+
+          <div class="active-filter" id="brandFilterBar" style="display:none;margin:10px 18px 0">
+            <span>Filtrando por <strong id="brandFilterName"></strong></span>
+            <button class="filter-clear" onclick="App.filterByBrand(State.brandFilter)">Quitar filtro ✕</button>
+          </div>
+
+          <div class="table-wrap" style="margin-top:14px">
+            <table>
+              <thead>
+                <tr>
+                  <th class="col-rank">#</th>
+                  <th class="col-photo"></th>
+                  <th class="col-product">Producto</th>
+                  <th class="col-pubs">Marca</th>
+                  <th class="col-price">Precio desde</th>
+                  <th class="col-sold">Vendedores</th>
+                  <th class="col-seller">Mejor precio</th>
+                  <th class="col-rep">Reputación</th>
+                </tr>
+              </thead>
+              <tbody id="tbody">
+                <tr class="empty-row">
+                  <td colspan="8">
+                    <div class="empty-state">
+                      <div class="empty-icon">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                      </div>
+                      <div class="empty-title">Elegí una categoría y hacé clic en Analizar</div>
+                      <div class="empty-sub">Vas a ver los productos del rubro con todos sus competidores</div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ══════════ VISTA: MAPA DEL RUBRO ══════════ -->
+      <div class="view" id="view-overview">
+        <div class="data-notice">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span><strong>Para qué sirve:</strong> compara todas las subcategorías del rubro entre sí para ver dónde hay menos
+          competencia por producto y a qué precio se vende. Toma una muestra de 25 productos del catálogo por subcategoría
+          (priorizando los que suelen tener vendedores; no es el catálogo completo) y tarda alrededor de un minuto la primera vez. Hacé clic en una fila para analizarla en detalle.</span>
+        </div>
+
+        <section class="section">
+          <div class="section-head">
+            <div class="section-head-left">
+              <div class="section-icon" style="background:var(--accent-dim);color:var(--accent-2)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/></svg>
+              </div>
+              <div class="section-title-wrap">
+                <div class="section-title">Competencia por subcategoría</div>
+                <div class="section-sub" id="overviewSub">Todavía no generado</div>
+              </div>
+            </div>
+            <button class="btn-search" id="btnOverview" onclick="App.loadOverview()">Generar mapa</button>
+          </div>
+          <div class="table-wrap">
+            <table class="overview-table">
+              <thead>
+                <tr>
+                  <th data-sort="label">Subcategoría</th>
+                  <th data-sort="avg_sellers" title="Promedio de vendedores por producto, entre los productos de la muestra que tienen vendedores">Vend. por producto</th>
+                  <th data-sort="low_competition_products" title="Productos de la muestra con 3 vendedores o menos">Con ≤3 vendedores</th>
+                  <th data-sort="median_price">Precio mediano</th>
+                  <th data-sort="free_shipping_pct">Envío gratis</th>
+                  <th data-sort="official_store_pct">Tiendas oficiales</th>
+                  <th data-sort="top_brand">Marca más presente</th>
+                  <th data-sort="catalog_total" title="Productos de catálogo que devuelve la búsqueda (incluye fichas sin vendedores)">Catálogo</th>
+                </tr>
+              </thead>
+              <tbody id="overviewBody">
+                <tr class="empty-row"><td colspan="8"><div class="empty-state">
+                  <div class="empty-title">Generá el mapa para comparar subcategorías</div>
+                  <div class="empty-sub">Usa los mismos términos y tipos de producto calibrados del selector de categoría</div>
+                </div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ══════════ VISTA: GRÁFICOS ══════════ -->
+      <div class="view" id="view-charts">
+
+        <div class="data-notice">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span><strong>Qué se mide acá:</strong> Mercado Libre no publica ventas por producto ni por período.
+          Lo que ves es <em>presencia en el catálogo</em>, <em>cantidad de vendedores compitiendo</em>
+          (el mejor indicador disponible de demanda real) y <em>posicionamiento de precios</em>.</span>
+        </div>
+
+        <section class="metrics-grid" id="chartsKpis">
+          <div class="metric-card" id="cProducts">
+            <div class="metric-label">Productos analizados</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Del catálogo del rubro</div>
+          </div>
+          <div class="metric-card" id="cBrands">
+            <div class="metric-label">Marcas detectadas</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Con productos activos</div>
+          </div>
+          <div class="metric-card" id="cSellers">
+            <div class="metric-label">Vendedores únicos</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Compitiendo en el rubro</div>
+          </div>
+          <div class="metric-card" id="cAvgPrice">
+            <div class="metric-label">Precio promedio</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">De todas las ofertas</div>
+          </div>
+        </section>
+
+        <div class="charts-empty" id="chartsEmpty">
+          <div class="empty-icon">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+          </div>
+          <div class="empty-title">Sin datos todavía</div>
+          <div class="empty-sub">Elegí una categoría arriba y hacé clic en <strong>Analizar</strong> para generar los gráficos</div>
+        </div>
+
+        <div id="chartsContent" style="display:none">
+          <div class="charts-grid">
+            <div class="chart-card span-2">
+              <div class="chart-title">Mapa de oportunidad</div>
+              <div class="chart-hint">Cada punto es un producto: a la izquierda hay menos competencia, arriba precios más altos. La esquina <strong>superior izquierda</strong> combina poca competencia con precio alto. El tamaño del punto es cuánto varía el precio entre vendedores. Hacé clic en un punto para abrirlo.</div>
+              <div class="chart-box tall"><canvas id="chartOpportunity"></canvas></div>
+            </div>
+            <div class="chart-card span-2">
+              <div class="chart-title">Participación de marcas en el catálogo</div>
+              <div class="chart-hint">Cuántos productos distintos ofrece cada marca en este rubro</div>
+              <div class="chart-box tall"><canvas id="chartBrandShare"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">Demanda por marca</div>
+              <div class="chart-hint">Promedio de vendedores compitiendo por producto — proxy de demanda</div>
+              <div class="chart-box"><canvas id="chartBrandDemand"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">Posicionamiento de precios</div>
+              <div class="chart-hint">Precio promedio por marca: gama económica vs. premium</div>
+              <div class="chart-box"><canvas id="chartBrandPrice"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">Productos más disputados</div>
+              <div class="chart-hint">Los que tienen más vendedores compitiendo</div>
+              <div class="chart-box"><canvas id="chartTopProducts"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">Mayor dispersión de precios</div>
+              <div class="chart-hint">Diferencia % entre el precio más bajo y el más alto</div>
+              <div class="chart-box"><canvas id="chartSpread"></canvas></div>
+            </div>
+            <div class="chart-card span-2">
+              <div class="chart-title">Vendedores con más presencia en el rubro</div>
+              <div class="chart-hint">En cuántos productos compiten y cuántas veces ganan por precio</div>
+              <div class="chart-box tall"><canvas id="chartTopSellers"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">Reputación de la competencia</div>
+              <div class="chart-hint">Distribución de niveles entre los oferentes</div>
+              <div class="chart-box"><canvas id="chartReputation"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-title">Política de envíos</div>
+              <div class="chart-hint">Proporción de publicaciones con envío gratis</div>
+              <div class="chart-box"><canvas id="chartShipping"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ VISTA: MI NEGOCIO ══════════ -->
+      <div class="view" id="view-mybiz">
+
+        <div class="data-notice">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span><strong>A diferencia del resto del panel:</strong> esta vista usa datos que ML solo entrega sobre tu propia cuenta (ventas, visitas, precio recomendado). Por eso acá sí podés ver ventas reales <em>filtradas por período</em>, algo que no existe para la competencia.</span>
+        </div>
+
+        <div class="filters-bar" style="flex-direction:row;align-items:center;gap:12px">
+          <div class="select-wrap" style="max-width:220px">
+            <div class="select-label">Período</div>
+            <select id="selBizDays" class="f-select">
+              <option value="7">Últimos 7 días</option>
+              <option value="30" selected>Últimos 30 días</option>
+              <option value="60">Últimos 60 días</option>
+              <option value="90">Últimos 90 días</option>
+            </select>
+          </div>
+          <button class="btn-search" onclick="App.loadMyBusiness()">Actualizar</button>
+        </div>
+
+        <section class="metrics-grid" id="bizKpis">
+          <div class="metric-card" id="bTotalListings">
+            <div class="metric-label">Publicaciones activas</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">En tu cuenta de ML</div>
+          </div>
+          <div class="metric-card" id="bVisits">
+            <div class="metric-label">Visitas del período</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Toda tu cuenta</div>
+          </div>
+          <div class="metric-card" id="bOrders">
+            <div class="metric-label">Ventas del período</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Filtrables por fecha, reales</div>
+          </div>
+          <div class="metric-card" id="bConversion">
+            <div class="metric-label">Conversión</div>
+            <div class="metric-value">—</div>
+            <div class="metric-sub">Ventas / visitas</div>
+          </div>
+        </section>
+
+        <div class="grid-2">
+          <section class="section">
+            <div class="section-head">
+              <div class="section-head-left">
+                <div class="section-icon" style="background:var(--accent-dim);color:var(--accent-2)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></svg>
+                </div>
+                <div class="section-title-wrap">
+                  <div class="section-title">Visitas por día</div>
+                  <div class="section-sub">Serie temporal real de tu cuenta</div>
+                </div>
+              </div>
+            </div>
+            <div class="chart-box" style="padding:16px 18px"><canvas id="chartVisitsSeries"></canvas></div>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <div class="section-head-left">
+                <div class="section-icon" style="background:var(--green-dim);color:var(--green)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+                </div>
+                <div class="section-title-wrap">
+                  <div class="section-title">Tus productos más vendidos</div>
+                  <div class="section-sub">Acumulado histórico por publicación</div>
+                </div>
+              </div>
+            </div>
+            <div class="chart-box" style="padding:16px 18px"><canvas id="chartMyTopItems"></canvas></div>
+          </section>
+        </div>
+
+        <section class="section">
+          <div class="section-head">
+            <div class="section-head-left">
+              <div class="section-icon" style="background:var(--yellow-dim);color:var(--yellow)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              </div>
+              <div class="section-title-wrap">
+                <div class="section-title">Precio recomendado para ganar</div>
+                <div class="section-sub">Cálculo oficial de ML (price to win) sobre tus publicaciones con más ventas</div>
+              </div>
+            </div>
+          </div>
+          <div class="section-body no-pad" id="priceToWinBody">
+            <div class="empty-state"><div class="empty-title">Actualizá para ver el análisis</div></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div class="section-head-left">
+              <div class="section-icon" style="background:var(--blue-dim);color:var(--blue)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+              </div>
+              <div class="section-title-wrap">
+                <div class="section-title">Todas tus publicaciones</div>
+                <div class="section-sub" id="bizItemsSub">Precio, stock y ventas acumuladas</div>
+              </div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th class="col-photo"></th>
+                <th class="col-product">Publicación</th>
+                <th class="col-price">Precio</th>
+                <th class="col-sold">Vendidas (histórico)</th>
+                <th class="col-pubs">Stock</th>
+                <th class="col-link"></th>
+              </tr></thead>
+              <tbody id="bizItemsBody">
+                <tr class="empty-row"><td colspan="6"><div class="empty-state"><div class="empty-title">Actualizá para cargar tus publicaciones</div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ══════════ VISTA: ANALIZAR PUBLICACIÓN ══════════ -->
+      <div class="view" id="view-lookup">
+
+        <div class="data-notice">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span><strong>Cómo funciona:</strong> pegá el link de cualquier publicación de Mercado Libre (tuya o de un competidor) o su código.
+          Buscamos la publicación entre los vendedores del catálogo: si está, la comparación es exacta contra el 100% de los vendedores
+          de ese producto (también para publicaciones de competidores). Si no está, te mostramos los productos de catálogo más parecidos.
+          Además vas a ver <strong>productos equivalentes de otras marcas</strong> con las mismas especificaciones técnicas.</span>
+        </div>
+
+        <section class="filters-bar" style="flex-direction:row;align-items:center;gap:12px">
+          <div class="search-wrap" style="flex:1;max-width:640px">
+            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="inputLookup" class="search-input" placeholder="Pegá el link de la publicación o el código (ej: MLA1234567890)" autocomplete="off" spellcheck="false">
+            <kbd class="search-hint">Enter</kbd>
+          </div>
+          <button id="btnLookup" class="btn-search" onclick="App.analyzeListing()">Analizar</button>
+        </section>
+
+        <div id="lookupEmpty" class="charts-empty">
+          <div class="empty-icon">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <div class="empty-title">Pegá una publicación para empezar</div>
+          <div class="empty-sub">Vas a ver con quién compite, a qué precio y qué posición ocupa</div>
+        </div>
+
+        <div id="lookupContent" style="display:none">
+          <section class="section" id="lookupHeaderCard"></section>
+
+          <section class="section" id="lookupBusiness" style="display:none">
+            <div class="section-head">
+              <div class="section-head-left">
+                <div class="section-icon" style="background:var(--yellow-dim);color:var(--yellow)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8.3l-5.3 5.3-3-3-4.4 4.4"/></svg>
+                </div>
+                <div class="section-title-wrap">
+                  <div class="section-title">Ventas y visitas de esta publicación</div>
+                  <div class="section-sub">Datos reales de tu cuenta — solo disponible para publicaciones propias</div>
+                </div>
+              </div>
+              <div class="select-wrap" style="max-width:180px">
+                <select id="selLookupDays" class="f-select" onchange="App.analyzeListing()">
+                  <option value="7">Últimos 7 días</option>
+                  <option value="30" selected>Últimos 30 días</option>
+                  <option value="60">Últimos 60 días</option>
+                  <option value="90">Últimos 90 días</option>
+                </select>
+              </div>
+            </div>
+            <section class="metrics-grid" id="lookupBizKpis" style="padding:0 18px 18px">
+              <div class="metric-card" id="lbVisits">
+                <div class="metric-label">Visitas del período</div>
+                <div class="metric-value">—</div>
+                <div class="metric-sub">De esta publicación</div>
+              </div>
+              <div class="metric-card" id="lbOrders">
+                <div class="metric-label">Ventas del período</div>
+                <div class="metric-value">—</div>
+                <div class="metric-sub">Unidades reales, filtradas por fecha</div>
+              </div>
+              <div class="metric-card" id="lbRevenue">
+                <div class="metric-label">Facturación del período</div>
+                <div class="metric-value">—</div>
+                <div class="metric-sub">Suma de ventas reales</div>
+              </div>
+              <div class="metric-card" id="lbConversion">
+                <div class="metric-label">Conversión</div>
+                <div class="metric-value">—</div>
+                <div class="metric-sub">Ventas / visitas</div>
+              </div>
+            </section>
+            <div class="chart-box" style="padding:0 18px 18px"><canvas id="chartLookupVisits"></canvas></div>
+            <div class="section-body no-pad" id="lookupPtwBody"></div>
+          </section>
+
+          <section class="section" id="lookupCandidates" style="display:none"></section>
+          <section class="section" id="lookupComparison" style="display:none">
+            <div class="section-head">
+              <div class="section-head-left">
+                <div class="section-icon" style="background:var(--green-dim);color:var(--green)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </div>
+                <div class="section-title-wrap">
+                  <div class="section-title">Comparación de vendedores</div>
+                  <div class="section-sub">Mismo producto, todos los que lo ofrecen ahora mismo</div>
+                </div>
+              </div>
+            </div>
+            <div class="section-body no-pad" id="lookupBody"></div>
+          </section>
+          <section class="section" id="lookupRelated" style="display:none"></section>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- Panel lateral de competencia -->
+<div class="panel-scrim" id="panelScrim" onclick="App.closePanel()"></div>
+<aside class="comp-panel" id="compPanel" aria-hidden="true">
+  <div class="panel-header">
+    <button class="panel-back" onclick="App.closePanel()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12,19 5,12 12,5"/>
+      </svg>
+      Volver
+    </button>
+    <div class="panel-product" id="panelProductInfo"></div>
+  </div>
+  <div class="panel-body" id="panelBody">
+    <div class="panel-loading"><div class="panel-spinner"></div><span>Analizando competencia…</span></div>
+  </div>
+</aside>
+
+<!-- Barra flotante de comparación -->
+<div class="cmp-bar" id="cmpBar" style="display:none">
+  <div class="cmp-bar-count"><strong id="cmpCount">0</strong> para comparar</div>
+  <div class="cmp-bar-names" id="cmpNames"></div>
+  <div class="cmp-bar-actions">
+    <button class="btn-ghost" onclick="App.clearCompare()">Limpiar</button>
+    <button class="btn-search" id="btnOpenCompare" onclick="App.openCompare()" disabled>Comparar</button>
+  </div>
+</div>
+
+<!-- Modal de comparación -->
+<div class="cmp-scrim" id="cmpScrim" style="display:none" onclick="App.closeCompare()"></div>
+<div class="cmp-modal" id="cmpModal" style="display:none" aria-hidden="true">
+  <div class="cmp-modal-head">
+    <div class="cmp-modal-title">Comparar productos</div>
+    <button class="panel-back" onclick="App.closeCompare()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      Cerrar
+    </button>
+  </div>
+  <div class="cmp-modal-body" id="cmpModalBody"></div>
+</div>
+
+<div class="toast-host" id="toastHost"></div>
+
+<script>
+  window.__MY_NICKNAME__ = (localStorage.getItem('ml_my_nick') || '').toUpperCase();
+</script>
+<script src="/static/app.js"></script>
+{% endif %}
+</body>
+</html>
