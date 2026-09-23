@@ -117,6 +117,7 @@ const State = {
   overviewSort: { key: 'avg_sellers', dir: 1 },
   compare     : [],
   brandFilter : null,
+  undercutSeq : 0,
 };
 State.activeSub = State.activeCat.subcats[0];
 
@@ -193,6 +194,12 @@ const API = {
   },
   async sellerTimeseries(nickname) {
     const r = await fetch(`/api/reports/seller-timeseries?${new URLSearchParams({ nickname })}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `Error HTTP ${r.status}`);
+    return d;
+  },
+  async undercutAlerts() {
+    const r = await fetch('/api/reports/undercut-alerts');
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || `Error HTTP ${r.status}`);
     return d;
@@ -401,6 +408,25 @@ function coverageNote(a) {
   return `Se analizaron ${Fmt.number(n)} de ${Fmt.number(a.total_catalog)} — Mercado Libre no permite recuperar más de eso por búsqueda`;
 }
 
+/**
+ * Aviso honesto sobre el sesgo de muestreo de marcas: verificado 2026-09-16 que
+ * NINGUNA búsqueda de texto da una muestra representativa de marcas — el ranking
+ * de relevancia de ML mezcla marcas totalmente distinto segun la palabra exacta
+ * usada (ej. en Lámparas LED: "led" trae 127 marcas distintas y 0 productos Sica,
+ * "dicroica led" trae 5 Sica, la búsqueda curada de la subcategoría trae 11 Sica
+ * — pero Sica tiene 231 productos reales en ese dominio). No hay forma de
+ * arreglar esto sin fragmentar en docenas de búsquedas por dominio, algo
+ * descartado a propósito (ver PROJECT_SPEC.md 7.5). Por eso el grafico se
+ * etiqueta como "muestra" y no como "presencia real en el catálogo".
+ */
+function brandSampleCaveat(a) {
+  const n = a.catalog_sample || a.analyzed || 0;
+  return `Estos números son de una <strong>muestra de ${Fmt.number(n)} productos</strong> para la búsqueda de esta
+    subcategoría, no de todo el catálogo. Mercado Libre no deja traer una muestra pareja de marcas: una marca
+    puede tener muchos más productos reales de los que aparecen acá si sus títulos no coinciden bien con esta
+    búsqueda puntual — no la descartes solo por este número.`;
+}
+
 function renderBrandBars(a) {
   const brands = (a.brands || []).slice(0, 10);
   if (!brands.length) {
@@ -415,6 +441,10 @@ function renderBrandBars(a) {
         <div class="brand-bar-track"><div class="brand-bar-fill" style="width:${(b.products / max) * 100}%"></div></div>
         <div class="brand-bar-val">${b.products}</div>
       </div>`).join('')}</div>
+    <div class="insight" style="margin:0 18px 14px">
+      <div class="insight-icon i-warn">!</div>
+      <div class="insight-text">${brandSampleCaveat(a)}</div>
+    </div>
     <div style="padding:0 18px 16px;font-size:11.5px;color:var(--text-3)">
       ${coverageNote(a)} · hacé clic en una marca para filtrar la tabla ·
       <a href="#" onclick="switchView('charts');return false;" style="color:var(--accent-2)">Ver gráficos completos →</a>
@@ -647,7 +677,7 @@ function renderInsights(a) {
 
   if (brands.length) {
     const top = brands[0];
-    out.push({ t: 'info', html: `<strong>${Fmt.esc(top.brand)}</strong> es la marca con más presencia: ${top.products} productos distintos en el catálogo de este rubro.` });
+    out.push({ t: 'info', html: `<strong>${Fmt.esc(top.brand)}</strong> es la marca con más presencia en esta muestra: ${top.products} productos distintos de los analizados para esta búsqueda (no necesariamente el total real de la marca, ver nota en "Marcas del rubro").` });
 
     const demand = [...brands].sort((x, y) => y.avg_sellers - x.avg_sellers)[0];
     if (demand && demand.avg_sellers >= 3) {
@@ -719,6 +749,64 @@ async function loadPriceAlerts(q) {
   } catch {
     section.style.display = 'none';
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ALERTAS DE UNDERCUT — tus publicaciones donde, ahora mismo, algun otro
+// vendedor del mismo producto de catalogo tiene un precio mas bajo que el tuyo.
+// A diferencia de "Movimientos de precio" (loadPriceAlerts), esto es especifico
+// a tu cuenta y no depende de haber corrido un analisis del rubro antes.
+// ═══════════════════════════════════════════════════════════
+async function loadUndercutAlerts() {
+  const seq = ++State.undercutSeq;
+  const body = $('undercutBody');
+  if (!body) return;
+  html(body, `<div class="panel-loading"><div class="panel-spinner"></div><span>Comparando tus precios contra la competencia…</span></div>`);
+  try {
+    const data = await API.undercutAlerts();
+    if (seq !== State.undercutSeq) return;
+    renderUndercutAlerts(data);
+  } catch (e) {
+    if (seq !== State.undercutSeq) return;
+    html(body, `<div class="empty-state"><div class="empty-sub">${Fmt.esc(e.message)}</div></div>`);
+  }
+}
+
+function renderUndercutAlerts(data) {
+  const alerts = data.alerts || [];
+  const subParts = [`${Fmt.number(data.checked)} publicaciones con producto de catálogo revisadas`];
+  if (data.no_catalog) subParts.push(`${Fmt.number(data.no_catalog)} sin match de catálogo (no se pueden comparar)`);
+  html($('undercutSub'), subParts.join(' · '));
+
+  if (!alerts.length) {
+    html($('undercutBody'), `<div class="empty-state">
+      <div class="empty-title">Nadie te está ganando por precio</div>
+      <div class="empty-sub">${data.checked ? 'Tenés el precio más bajo en todas tus publicaciones catalogadas.' : 'No encontramos publicaciones propias agrupadas en el catálogo de ML todavía.'}</div>
+    </div>`);
+    return;
+  }
+
+  html($('undercutBody'), `<div class="insight-list">${alerts.map(a => `
+    <div class="comp-card">
+      <div class="comp-top">
+        <div class="comp-left"><div class="comp-nick-wrap">
+          <span class="comp-nick">${Fmt.esc((a.title || '').split(' ').slice(0, 8).join(' '))}</span>
+        </div></div>
+        <div>
+          <div class="comp-price">${Fmt.price(a.best_price)}</div>
+          <div class="comp-price-range" style="color:var(--red)">-${a.diff_pct}% vs. tu precio</div>
+        </div>
+      </div>
+      <div class="comp-stats">
+        <div class="comp-stat-item"><span class="comp-stat-val">${Fmt.price(a.my_price)}</span><span class="comp-stat-label">Tu precio</span></div>
+        <div class="comp-stat-item"><span class="comp-stat-val">${Fmt.esc(a.competitor_nickname || '—')}</span><span class="comp-stat-label">Te está ganando</span></div>
+        <div class="comp-stat-item" style="margin-left:auto"><span class="threat-badge threat-high">${a.competitors_below} por debajo</span></div>
+      </div>
+      <div class="comp-links">
+        ${a.permalink ? `<a class="comp-link" href="${Fmt.esc(a.permalink)}" target="_blank" rel="noopener noreferrer">Tu publicación ↗</a>` : ''}
+        ${a.competitor_permalink ? `<a class="comp-link comp-link-action" href="${Fmt.esc(a.competitor_permalink)}" target="_blank" rel="noopener noreferrer">Ver competidor ↗</a>` : ''}
+      </div>
+    </div>`).join('')}</div>`);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -985,6 +1073,7 @@ function renderPanel(product, data, targetId = 'panelBody', pinnedItemId = null)
       o.free_shipping  ? '<span class="comp-link" style="cursor:default">Envío gratis</span>' : '',
       o.official_store ? '<span class="comp-link" style="cursor:default">Tienda oficial</span>' : '',
       o.city           ? `<span class="comp-link" style="cursor:default">${Fmt.esc(o.city)}</span>` : '',
+      o.permalink      ? `<a class="comp-link comp-link-action" href="${Fmt.esc(o.permalink)}" target="_blank" rel="noopener noreferrer">Ver publicación ↗</a>` : '',
     ].filter(Boolean).join('');
 
     return `<div class="comp-card${mine ? ' comp-mine' : ''}"${pinned ? ' style="outline:2px solid var(--accent-2)"' : ''}>
@@ -1588,6 +1677,7 @@ const App = {
     const days = Number($('selBizDays')?.value || 30);
     const requestId = ++State.myBizRequestSeq;   // descarta respuestas de requests anteriores
     setProgress('Cargando datos de tu cuenta…');
+    loadUndercutAlerts(); // en paralelo, no bloquea el resto — maneja sus propios errores
     try {
       const data = await API.myBusiness(days);
       if (requestId !== State.myBizRequestSeq) return;   // llegó una carga más nueva primero

@@ -1722,6 +1722,112 @@ def api_price_alerts():
     q = request.args.get("q", "").strip()
     return jsonify({"query": q, "alerts": get_price_alerts(q)})
 
+def _my_own_items(owner_id) -> list:
+    """
+    Publicaciones propias activas con su catalog_product_id (si ML las agrupo en
+    un producto de catalogo). Reusa el mismo patron de paginacion+multiget que
+    /api/my-business, pero devuelve solo los campos que necesita el chequeo de
+    undercut (no duplica la logica de ventas/visitas de ese endpoint).
+    """
+    key = f"myitems_catalog:{owner_id}"
+    cached = cache_get(key)
+    if cached is not None:
+        return cached
+
+    item_ids, _ = ml_get_pages(f"/users/{owner_id}/items/search", {}, page_size=100, max_records=300)
+    batches = [item_ids[i:i + 20] for i in range(0, len(item_ids), 20)]
+
+    def fetch_batch(batch):
+        bulk = ml_get("/items", {"ids": ",".join(batch)})
+        out = []
+        for entry in bulk:
+            if entry.get("code") != 200:
+                continue
+            b = entry["body"]
+            if b.get("status") != "active":
+                continue
+            out.append({
+                "id":                 b.get("id"),
+                "title":              b.get("title"),
+                "price":              b.get("price"),
+                "permalink":          b.get("permalink"),
+                "catalog_product_id": b.get("catalog_product_id"),
+            })
+        return out
+
+    items = [it for batch_result in map_parallel(fetch_batch, batches, max_workers=8) for it in batch_result]
+    cache_set(key, items, ttl=300)
+    return items
+
+def _undercut_alerts() -> dict:
+    """
+    Publicaciones propias donde, HOY, algun otro vendedor del mismo producto de
+    catalogo tiene un precio mas bajo que el tuyo. A diferencia de
+    get_price_alerts() (que compara el rubro entero contra la corrida anterior,
+    sin importar de quien sea cada publicacion), esto compara especificamente
+    TUS publicaciones contra el resto de los vendedores de ese mismo producto,
+    en tiempo real (no depende de haber corrido un analisis antes).
+
+    Solo puede chequear publicaciones que ML agrupo en un producto de catalogo
+    (catalog_product_id): sin eso no hay forma de saber quienes mas venden lo
+    mismo (ver PROJECT_SPEC.md 5.7 y 7.6 - /items/{id} de terceros da 403).
+    """
+    owner_id = get_owner_id()
+    if not owner_id:
+        raise RuntimeError(f"Sin token. Autorizate primero en http://localhost:{PORT}/auth/setup")
+
+    items = _my_own_items(owner_id)
+    with_catalog = [it for it in items if it.get("catalog_product_id")]
+
+    def check(it):
+        try:
+            offers_data = _offers_for_product(it["catalog_product_id"], light=True)
+        except Exception:
+            return None
+        others = [o for o in offers_data.get("offers", [])
+                  if str(o.get("seller_id")) != str(owner_id) and o.get("price") is not None]
+        my_price = it.get("price")
+        if not others or my_price is None:
+            return None
+        best = min(others, key=lambda o: o["price"])
+        if best["price"] >= my_price:
+            return None
+        below = [o for o in others if o["price"] < my_price]
+        return {
+            "item_id":              it["id"],
+            "title":                it["title"],
+            "my_price":             my_price,
+            "permalink":            it.get("permalink"),
+            "product_id":           it["catalog_product_id"],
+            "best_price":           best["price"],
+            "diff_abs":             round(my_price - best["price"], 2),
+            "diff_pct":             round(((my_price - best["price"]) / my_price) * 100, 1),
+            "competitor_nickname":  best.get("nickname"),
+            "competitor_reputation": best.get("reputation"),
+            "competitor_permalink": best.get("permalink"),
+            "competitors_below":   len(below),
+        }
+
+    alerts = map_parallel(check, with_catalog, max_workers=8)
+    alerts.sort(key=lambda a: a["diff_pct"], reverse=True)
+    return {
+        "alerts":       alerts,
+        "checked":      len(with_catalog),
+        "no_catalog":   len(items) - len(with_catalog),
+        "total_active": len(items),
+    }
+
+@app.route("/api/reports/undercut-alerts")
+def api_undercut_alerts():
+    try:
+        return jsonify(_undercut_alerts())
+    except requests.HTTPError as e:
+        return jsonify({"error": f"Error HTTP {e.response.status_code}", "alerts": []}), e.response.status_code
+    except RuntimeError as e:
+        return jsonify({"error": str(e), "alerts": []}), 401
+    except Exception as e:
+        return jsonify({"error": str(e), "alerts": []}), 500
+
 @app.route("/api/my-business")
 def api_my_business():
     """

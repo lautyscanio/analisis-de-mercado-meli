@@ -280,7 +280,7 @@
                 </div>
                 <div class="section-title-wrap">
                   <div class="section-title">Marcas del rubro</div>
-                  <div class="section-sub">Presencia en el catálogo</div>
+                  <div class="section-sub">Presencia en la muestra analizada</div>
                 </div>
               </div>
               <span class="section-tag tag-live">En vivo</span>
@@ -458,8 +458,8 @@
               <div class="chart-box tall"><canvas id="chartOpportunity"></canvas></div>
             </div>
             <div class="chart-card span-2">
-              <div class="chart-title">Participación de marcas en el catálogo</div>
-              <div class="chart-hint">Cuántos productos distintos ofrece cada marca en este rubro</div>
+              <div class="chart-title">Participación de marcas en la muestra</div>
+              <div class="chart-hint">Sobre los productos analizados de esta búsqueda — no es la proporción real de cada marca en todo el catálogo (ML no permite un muestreo representativo, ver nota debajo)</div>
               <div class="chart-box tall"><canvas id="chartBrandShare"></canvas></div>
             </div>
             <div class="chart-card">
@@ -544,6 +544,23 @@
             <div class="metric-label">Conversión</div>
             <div class="metric-value">—</div>
             <div class="metric-sub">Ventas / visitas</div>
+          </div>
+        </section>
+
+        <section class="section" id="seccion-undercut">
+          <div class="section-head">
+            <div class="section-head-left">
+              <div class="section-icon" style="background:var(--red-dim);color:var(--red)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+              </div>
+              <div class="section-title-wrap">
+                <div class="section-title">Te están bajando el precio</div>
+                <div class="section-sub" id="undercutSub">Tus publicaciones vs. el resto de los vendedores del mismo producto, ahora mismo</div>
+              </div>
+            </div>
+          </div>
+          <div class="section-body no-pad" id="undercutBody">
+            <div class="empty-state"><div class="empty-title">Actualizá para revisar tus precios</div></div>
           </div>
         </section>
 

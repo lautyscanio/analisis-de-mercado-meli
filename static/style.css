@@ -927,6 +927,8 @@ tbody tr.is-comparing .rank-cell .rank-num { opacity: 0; }
 .comp-links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .comp-link { font-size: 11px; font-weight: 500; color: var(--text-2); background: var(--surface-3); border: 1px solid var(--border); padding: 4px 9px; border-radius: var(--r-sm); transition: all 0.15s; font-family: var(--font-mono); }
 .comp-link:hover { color: var(--text-1); border-color: var(--border-2); }
+.comp-link-action { color: var(--accent-2); background: var(--accent-dim); border-color: rgba(156,140,242,0.25); text-decoration: none; cursor: pointer; }
+.comp-link-action:hover { color: #fff; background: var(--accent); border-color: var(--accent); }
 
 /* ── 20. Toast (notificaciones ligeras) ───────────────────── */
 .toast-host { position: fixed; bottom: 20px; right: 20px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }

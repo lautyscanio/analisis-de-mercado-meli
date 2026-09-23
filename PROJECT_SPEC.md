@@ -312,6 +312,38 @@ muestra menos vendedores de los que `total` indica, revisar esto primero.
 2026-09-16. No hay forma de saber si es permanente o una restricción temporal — conviene volver a
 verificarlo si en el futuro los números vuelven a sentirse "demasiado chicos" de nuevo.
 
+### 5.9. "Marcas del rubro" es una muestra sesgada por diseño, no un conteo real (verificado 2026-09-16)
+
+El gráfico de marcas cuenta el atributo `BRAND` sobre los ~200 productos que trae una única
+búsqueda de texto (ver §5.8). Se comprobó que **ninguna elección de `q` da una muestra
+representativa de marcas** — el ranking de relevancia de ML agrupa marcas muy distintas según
+la palabra exacta usada, y `sort` no tiene efecto (ver §5.6, probado con `relevance`,
+`price_asc`, `sold_quantity_desc`, `popularity`: mismos resultados siempre).
+
+Caso real (dominio `MLA-LIGHT_BULBS`, "Lámparas LED"): Sica tiene **231 productos reales** en
+ese dominio (verificado buscando `q=sica` directamente: 200/200 resultados eran de esa marca).
+Pero:
+
+| Búsqueda | Sica en la muestra | Marcas distintas en la muestra |
+|---|---|---|
+| `q=lampara led 9w` (la curada de la subcategoría) | 11 | ~15 |
+| `q=led` (genérica, corta) | **0** | 127 |
+| `q=dicroica led` | 5 | 77 |
+
+Ni la palabra curada para maximizar cobertura (§5.6) ni una palabra genérica ni una alternativa
+dan un número cercano a la realidad — cada una trae una porción arbitraria y distinta del
+catálogo real de cada marca. La única forma de acercarse sería correr docenas de búsquedas
+distintas cubriendo cada variante de producto del dominio, que es el mismo patrón de
+fragmentación sistemática ya descartado en la sección 7.5.
+
+**Decisión tomada**: no se puede "arreglar" esto con una eleccion mejor de parámetros — es un
+límite real de lo que la API permite medir sin fragmentar. Se optó por la honestidad en vez de
+un parche cosmético: el gráfico y sus textos ahora dicen explícitamente "muestra analizada", no
+"presencia en el catálogo" ni "marca con más presencia real", y se agregó un aviso visible en
+"Marcas del rubro" explicando que una marca puede tener muchos más productos reales de los que
+aparecen ahí. No usar este gráfico para concluir "la marca X casi no vende acá" — solo sirve para
+ver qué marcas aparecen en el tipo de producto buscado, no su volumen real.
+
 ---
 
 ## 5bis. Arquitectura de datos elegida: pivot al catálogo
