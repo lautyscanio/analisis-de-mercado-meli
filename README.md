@@ -13,25 +13,25 @@ No es una herramienta de gestión de ventas ni de publicación de productos — 
 Aquí puedes ver la interfaz de usuario de Mercadata y sus principales herramientas de análisis:
 
 ### Panel General (Dashboard)
-![Dashboard principal](imagenes\4.png)
+![Dashboard principal](imagenes/4.png)
 *Vista principal del panel general con el buscador por categoría, métricas agregadas (productos en catálogo, rango de precios, vendedor dominante) y lecturas automáticas generadas por el motor de insights.*
 
 ### Encontrar el Menor Precio (Analizar Publicación)
-![Buscador de precio mínimo](imagenes\2.png)
+![Buscador de precio mínimo](imagenes/2.png)
 *Pegá el link directo de cualquier publicación (tuya o de la competencia) y el sistema rastreará al instante a todos los vendedores reales de ese mismo producto para mostrarte exactamente cuál es el precio más bajo del mercado.*
 
 ### Mapa de Oportunidad (Gráficos)
-![Mapa de oportunidad](imagenes\5.png)
+![Mapa de oportunidad](imagenes/5.png)
 *Visualización gráfica que muestra cada producto como un punto. Cruza la cantidad de vendedores compitiendo frente al precio mínimo para detectar rápidamente huecos de mercado.*
 
 
 ### Panel de Competencia
-![Panel de competencia](imagenes\3.png)
+![Panel de competencia](imagenes/3.png)
 *Análisis detallado al abrir un producto del catálogo (ej. Termica Schneider). Muestra la dispersión de precios y la lista completa de vendedores compitiendo, ordenados por precio, incluyendo su nivel de reputación y ventas.*
 
 
 ### Analizar Publicación
-![Analizar publicación](imagenes\1.png)
+![Analizar publicación](imagenes/1.png)
 *Módulo que permite pegar el link directo de cualquier publicación de Mercado Libre, identificarla dentro del catálogo oficial y compararla instantáneamente contra el 100% de los vendedores reales de ese mismo producto.*
 ---
 
