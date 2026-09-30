@@ -817,7 +817,7 @@ def _discover_domains(text: str) -> tuple[list, str | None]:
             brand = next((a.get("value_name") for a in s.get("attributes") or [] if a.get("id") == "BRAND"), None)
     return domains, brand
 
-def _find_catalog_matches(text: str, domain_hint: str | None = None, item_id: str | None = None, limit: int = 10) -> dict:
+def _find_catalog_matches(text: str, domain_hint: str | None = None, item_id: str | None = None, limit: int = 30) -> dict:
     """
     Identifica a que producto de catalogo corresponde una publicacion a partir de
     su titulo (o del texto de su link). Antes se hacia UNA busqueda de 20 resultados
@@ -845,6 +845,11 @@ def _find_catalog_matches(text: str, domain_hint: str | None = None, item_id: st
         domains = [domain_hint] + [d for d in domains if d != domain_hint]
 
     searches = [{"domain_id": d} for d in domains[:2]] + [{}]
+    # Consulta corta (primeras palabras distintivas) dentro del dominio principal: rescata
+    # productos del mismo tipo cuyo nombre no comparte toda la redaccion del titulo pegado.
+    short_q = " ".join(list(dict.fromkeys(_tokenize(text)))[:3])
+    if short_q and short_q != _norm(text):
+        searches += [{"q": short_q, **({"domain_id": domains[0]} if domains else {})}]
 
     def run(extra):
         try:
@@ -853,7 +858,7 @@ def _find_catalog_matches(text: str, domain_hint: str | None = None, item_id: st
             return []
 
     pool: dict = {}
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         for results in ex.map(run, searches):
             for p in results:
                 pool.setdefault(p["id"], p)
@@ -897,7 +902,7 @@ def _find_catalog_matches(text: str, domain_hint: str | None = None, item_id: st
                 score -= 0.1
         scored.append((p, score))
     scored.sort(key=lambda t: t[1], reverse=True)
-    top = scored[:15]
+    top = scored[:30]
 
     # Top 3 con hasta 200 ofertas (para encontrar el item_id aunque haya muchos vendedores)
     jobs = [(p["id"], 200 if (i < 3 and item_id) else 50) for i, (p, _) in enumerate(top)]
@@ -973,7 +978,7 @@ def _value_in_text(val: str, text_norm: str) -> bool:
     nums = _NUM_RE.findall(_norm(val))
     return len(nums) == 1 and len(nums[0]) >= 2 and re.search(rf"(?<![\d.,]){re.escape(nums[0])}(?![\d.,])", text_norm) is not None
 
-def _related_products(product_id: str, limit: int = 12) -> dict:
+def _related_products(product_id: str, limit: int = 36, wide: bool = False) -> dict:
     """
     Productos EQUIVALENTES (sustitutos) de otras marcas/modelos: mismo dominio de
     producto y las mismas especificaciones tecnicas (polos, amperaje, potencia,
@@ -981,7 +986,7 @@ def _related_products(product_id: str, limit: int = 12) -> dict:
     "contra que mas compite este producto", que el listado de vendedores del mismo
     producto no muestra. Solo se devuelven productos con vendedores activos hoy.
     """
-    key = f"related:{product_id}:{limit}"
+    key = f"related:{product_id}:{limit}:{int(wide)}"
     cached = cache_get(key)
     if cached is not None:
         return cached
@@ -999,20 +1004,36 @@ def _related_products(product_id: str, limit: int = 12) -> dict:
     words = [t for t in dict.fromkeys(name_tokens) if t not in drop and t not in _code_tokens([t])]
     query_full  = " ".join(words[:6]) or _norm(_attr(product, "PRODUCT_TYPE") or product.get("name") or "")
     query_short = " ".join(words[:2]) or query_full
+    query_mid   = " ".join(words[:4]) or query_full
 
-    def run(q):
-        params = {"status": "active", "site_id": "MLA", "q": q, "limit": 50}
-        if domain:
+    def run(job):
+        q, offset, use_domain = job
+        params = {"status": "active", "site_id": "MLA", "q": q, "limit": 50, "offset": offset}
+        if domain and use_domain:
             params["domain_id"] = domain
         try:
             return ml_get("/products/search", params).get("results") or []
         except Exception:
             return []
 
+    # Variantes de consulta (completa / media / corta) para no depender de una sola redaccion.
+    # En modo amplio se pide ademas la 2da pagina (offset 50) de las dos principales: paginacion
+    # normal, muy por debajo del tope de resultados de ML.
+    jobs = [(q, 0, True) for q in dict.fromkeys([query_full, query_mid, query_short])]
+    if wide:
+        jobs += [(q, 50, True) for q in dict.fromkeys([query_full, query_short])]
+        # Busqueda mas abierta: solo el tipo de producto (1ra palabra) dentro del dominio, y las
+        # variantes de texto SIN restringir dominio (ML a veces clasifica el mismo producto en otro
+        # dominio). Lo que venga de otro dominio debe parecerse lo suficiente por texto (ver abajo).
+        type_word = words[0] if words else ""
+        if type_word and type_word != query_short:
+            jobs.append((type_word, 0, True))
+        if domain:
+            jobs += [(q, 0, False) for q in dict.fromkeys([query_mid, query_short])]
+
     pool: dict = {}
-    queries = [query_full] if query_full == query_short else [query_full, query_short]
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        for results in ex.map(run, queries):
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for results in ex.map(run, jobs):
             for p in results:
                 if p.get("id") != product_id:
                     pool.setdefault(p["id"], p)
@@ -1049,9 +1070,18 @@ def _related_products(product_id: str, limit: int = 12) -> dict:
             numeric_diff = True
             score -= 0.15
         same = score >= 0.6 and ((not numeric_diff and numeric_ok == len(numeric_ids)) if numeric_ids else not diffs)
+        if wide:
+            # Modo amplio: las fichas de catalogo suelen estar incompletas, asi que ademas de las
+            # specs se pondera el parecido del nombre. Un producto de OTRO dominio solo entra si
+            # su nombre se parece de verdad (evita traer cosas sin relacion).
+            sim = text_sim.get(p["id"], 0)
+            if domain and p.get("domain_id") != domain and sim < 0.25:
+                continue
+            score = max(score, 0.5 * spec_score + 0.5 * sim)
         scored.append((p, score, matched, diffs, same))
     scored.sort(key=lambda t: (t[4], t[1]), reverse=True)
-    top = [t for t in scored if t[1] >= 0.3][:30]
+    min_score, max_top = (0.12, 80) if wide else (0.3, 45)
+    top = [t for t in scored if t[1] >= min_score][:max_top]
 
     summaries = dict(map_parallel(lambda t: (t[0]["id"], _offer_summary(t[0]["id"])), top, max_workers=8))
     related = []
@@ -1089,6 +1119,40 @@ def _related_products(product_id: str, limit: int = 12) -> dict:
     }
     cache_set(key, result, ttl=1800)
     return result
+
+@app.route("/api/products/<product_id>/cheaper")
+def api_product_cheaper(product_id):
+    """
+    Alternativas MAS BARATAS que el precio de referencia (?max_price=, por defecto el
+    precio minimo actual del producto). Reusa la busqueda amplia de equivalentes y
+    filtra por precio minimo de vendedor; las de mismas specs van primero.
+    """
+    if not re.fullmatch(r"MLA\d{4,}", product_id or ""):
+        return jsonify({"error": "Codigo de producto invalido"}), 400
+    try:
+        data = _related_products(product_id, limit=80, wide=True)
+        ref = request.args.get("max_price", type=float) or (data.get("source") or {}).get("min_price")
+        if not ref:
+            return jsonify({"product_id": product_id, "reference_price": None, "cheaper": [], "considered": len(data["related"]),
+                            "error": "Este producto no tiene precio de referencia (sin vendedores activos)."})
+        cheaper = []
+        for r in data["related"]:
+            if r.get("min_price") and r["min_price"] < ref:
+                cheaper.append({**r, "savings_pct": round((ref - r["min_price"]) / ref * 100)})
+        # Primero las que mas coinciden con el producto (mismas specs, luego mayor puntaje); el precio solo desempata
+        cheaper.sort(key=lambda r: (not r["same_specs"], -r["score"], r["min_price"]))
+        prices = [r["min_price"] for r in data["related"] if r.get("min_price")]
+        return jsonify({
+            "product_id": product_id, "reference_price": ref, "cheaper": cheaper,
+            "cheapest_found": min(prices) if prices else None,
+            "considered": len(data["related"]), "same_specs_count": sum(1 for r in cheaper if r["same_specs"]),
+        })
+    except requests.HTTPError as e:
+        return jsonify({"error": f"Error HTTP {e.response.status_code}", "cheaper": []}), e.response.status_code
+    except RuntimeError as e:
+        return jsonify({"error": str(e), "cheaper": []}), 401
+    except Exception as e:
+        return jsonify({"error": str(e), "cheaper": []}), 500
 
 @app.route("/api/products/<product_id>/related")
 def api_product_related(product_id):

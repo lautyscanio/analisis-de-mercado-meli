@@ -974,6 +974,20 @@ div.rel-thumb { background: var(--surface-3); }
 .rel-price em.down { color: var(--green); }
 .rel-price em.up   { color: var(--red); }
 .rel-diff { margin-top: 8px; font-size: 10.5px; color: var(--text-3); line-height: 1.4; }
+.rel-hidden { display: none; }
+.rel-more { display: flex; justify-content: center; padding: 0 18px 18px; }
+.rel-more.compact { padding: 12px 0 0; }
+.cheaper-wrap { padding: 12px 18px 0; }
+#compPanel .cheaper-wrap { padding: 0 0 12px; }
+.cheaper-res .rel-grid { padding-left: 0; padding-right: 0; }
+.btn-cheaper {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-family: inherit;
+  font-size: 12.5px; font-weight: 600; color: var(--green);
+  background: var(--surface-2); border: 1px solid var(--green); border-radius: var(--r-md);
+  padding: 8px 14px; transition: background 0.15s, transform 0.15s var(--ease-fast);
+}
+.btn-cheaper:hover:not(:disabled) { background: var(--surface-3); transform: translateY(-1px); }
+.btn-cheaper:disabled { opacity: 0.6; cursor: progress; }
 
 .overview-table th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
 .overview-table th[data-sort]:hover { color: var(--text-1); }

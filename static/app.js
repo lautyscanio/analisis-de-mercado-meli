@@ -146,6 +146,13 @@ const API = {
     if (!r.ok) throw new Error(d.error || `Error HTTP ${r.status}`);
     return d;
   },
+  async cheaper(productId, maxPrice = null) {
+    const qs = maxPrice ? `?max_price=${encodeURIComponent(maxPrice)}` : '';
+    const r = await fetch(`/api/products/${encodeURIComponent(productId)}/cheaper${qs}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || `Error HTTP ${r.status}`);
+    return d;
+  },
   async overview(subcats) {
     const r = await fetch('/api/overview', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -337,6 +344,13 @@ function renderRubrosNav() {
   });
 }
 
+// Opcion "sin categoria": no manda category ni domain, busca en todo el catalogo.
+const NO_CAT = { label: 'Sin categoría (todo el catálogo)', q: '', domain: '', cat: '', noCat: true };
+
+function subFromSelect(value) {
+  return Number(value) === -1 ? NO_CAT : (State.activeCat.subcats[Number(value)] || State.activeCat.subcats[0]);
+}
+
 function populateCategorySelect() {
   const sel = $('selCat');
   if (!sel) return;
@@ -346,9 +360,10 @@ function populateCategorySelect() {
     if (!g) groups.push(g = { name: s.group || '', items: [] });
     g.items.push(`<option value="${i}">${Fmt.esc(s.label)}</option>`);
   });
-  sel.innerHTML = groups.map(g => g.name
+  sel.innerHTML = `<option value="-1">${Fmt.esc(NO_CAT.label)}</option>` + groups.map(g => g.name
     ? `<optgroup label="${Fmt.esc(g.name)}">${g.items.join('')}</optgroup>`
     : g.items.join('')).join('');
+  sel.value = String(State.activeCat.subcats.indexOf(State.activeSub));
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -356,7 +371,7 @@ function populateCategorySelect() {
 // ═══════════════════════════════════════════════════════════
 async function loadTrends() {
   const sub    = State.activeSub;
-  const catId  = sub?.cat || State.activeCat.mlCategory || '';
+  const catId  = sub?.noCat ? '' : (sub?.cat || State.activeCat.mlCategory || '');
   const label  = sub?.label || State.activeCat.label;
 
   html($('trendsSubtitle'), `Búsquedas reales en “${Fmt.esc(label)}”`);
@@ -367,7 +382,7 @@ async function loadTrends() {
     let items = data.items || [];
 
     // Algunas subcategorías muy específicas no tienen tendencias propias: se cae al rubro.
-    if (!items.length && catId !== State.activeCat.mlCategory) {
+    if (!items.length && !sub?.noCat && catId !== State.activeCat.mlCategory) {
       data  = await API.trends(State.activeCat.mlCategory);
       items = data.items || [];
       html($('trendsSubtitle'), `Búsquedas reales en “${Fmt.esc(State.activeCat.label)}”`);
@@ -1010,9 +1025,13 @@ async function renderPanelTrend(productId) {
 
   const body = document.getElementById('panelBody');
   if (!body) return;
-  body.insertAdjacentHTML('afterbegin', `
+  // Debajo del botón "más baratos" (que va siempre arriba de todo)
+  const cheaperWrap = body.querySelector(':scope > .cheaper-wrap');
+  const trendHtml = `
     <div class="panel-section" style="margin-bottom:0">Tendencia de precio (histórico propio)</div>
-    <div class="chart-box" style="padding:10px 18px 18px;height:140px"><canvas id="panelTrendChart"></canvas></div>`);
+    <div class="chart-box" style="padding:10px 18px 18px;height:140px"><canvas id="panelTrendChart"></canvas></div>`;
+  if (cheaperWrap) cheaperWrap.insertAdjacentHTML('afterend', trendHtml);
+  else body.insertAdjacentHTML('afterbegin', trendHtml);
 
   drawChart('panelTrendChart', {
     type: 'line',
@@ -1166,7 +1185,8 @@ function renderLookupResult(data) {
           </div>
         </div>
       </div>
-      <div class="rel-grid">${candidates.map(c => candidateCard(c, autoPick && c.id === autoPick.id)).join('')}</div>`);
+      <div class="rel-grid">${candidates.map((c, i) => candidateCard(c, autoPick && c.id === autoPick.id).replace('class="rel-card', i < REL_PAGE ? 'class="rel-card' : 'class="rel-hidden rel-card')).join('')}</div>
+      ${candidates.length > REL_PAGE ? `<div class="rel-more"><button class="btn-ghost" onclick="App.showMore(this)">Ver más (${candidates.length - REL_PAGE})</button></div>` : ''}`);
   }
   $('lookupCandidates').style.display = '';
   if (autoPick) App.selectCandidate(autoPick.id);
@@ -1295,11 +1315,14 @@ function renderRelated(data, referencePrice, compact) {
     ? `<div class="panel-section" style="margin-top:22px">Equivalentes de otras marcas</div>`
     : relatedHead('Productos equivalentes y alternativas', 'Mismo tipo de producto, comparado por especificaciones técnicas del catálogo de ML. Solo productos con vendedores activos hoy.');
 
+  const ref = referencePrice || data.source?.min_price;
+  // En el panel lateral el botón va arriba de todo (lo inserta openPanel); acá solo en la vista completa.
+  const cheaperBox = compact ? '' : cheaperControls(data.product_id, ref);
+
   if (!related.length) {
-    return `${head}${specChips}<div class="empty-state" style="padding:22px"><div class="empty-sub">No encontramos productos equivalentes con vendedores activos.</div></div>`;
+    return `${head}${specChips}${cheaperBox}<div class="empty-state" style="padding:22px"><div class="empty-sub">No encontramos productos equivalentes con vendedores activos.</div></div>`;
   }
 
-  const ref = referencePrice || data.source?.min_price;
   const st  = data.same_spec_stats || {};
   let insight = '';
   if (st.count && st.median) {
@@ -1312,7 +1335,29 @@ function renderRelated(data, referencePrice, compact) {
       Precio mínimo entre ellos ${Fmt.price(st.min)}, mediana ${Fmt.price(st.median)}.${pos}</div></div>`;
   }
 
-  const cards = related.map(r => {
+  return `${head}${compact ? '' : specChips}${insight}${cheaperBox}${pagedGrid(related.map(r => relatedCard(r, ref)), compact)}`;
+}
+
+const REL_PAGE = 12;
+
+/** Grilla con "Ver más": muestra REL_PAGE tarjetas y revela el resto de a tandas (sin nuevas llamadas a la API). */
+function pagedGrid(cards, compact) {
+  const hidden = Math.max(0, cards.length - REL_PAGE);
+  const body = cards.map((c, i) => i < REL_PAGE ? c : c.replace('class="rel-card"', 'class="rel-card rel-hidden"')).join('');
+  return `<div class="rel-grid${compact ? ' compact' : ''}">${body}</div>` +
+    (hidden ? `<div class="rel-more${compact ? ' compact' : ''}"><button class="btn-ghost" onclick="App.showMore(this)">Ver más (${hidden})</button></div>` : '');
+}
+
+function cheaperControls(productId, ref) {
+  return `<div class="cheaper-wrap" data-pid="${Fmt.esc(productId || '')}" data-ref="${ref || ''}">
+    <button class="btn-cheaper" onclick="App.findCheaper(this)" title="Busca productos equivalentes con un precio mínimo menor al actual">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+      Encontrar similares más baratos</button>
+    <div class="cheaper-res"></div>
+  </div>`;
+}
+
+function relatedCard(r, ref) {
     const diff = ref && r.min_price ? ((r.min_price - ref) / ref) * 100 : null;
     const badge = r.same_specs
       ? '<span class="threat-badge threat-low">Mismas specs</span>'
@@ -1333,9 +1378,6 @@ function renderRelated(data, referencePrice, compact) {
       </div>
       ${diffs ? `<div class="rel-diff">Difiere en ${diffs}</div>` : ''}
     </div>`;
-  }).join('');
-
-  return `${head}${compact ? '' : specChips}${insight}<div class="rel-grid${compact ? ' compact' : ''}">${cards}</div>`;
 }
 
 /** Desglose de "boosts" del price_to_win: que palanca puntual mejora las chances de ganar el catalogo. */
@@ -1554,11 +1596,12 @@ const App = {
     if (State.loading) return;
     const sub    = State.activeSub || State.activeCat.subcats[0];
     const custom = $('inputQ')?.value.trim() || '';
+    if (sub.noCat && !custom) { toast('Escribí el producto a buscar: sin categoría no hay término por defecto'); $('inputQ')?.focus(); return; }
     const q      = custom || sub.q;
     // Con domain (tipo de producto) no se manda category: el domain es mas preciso y
     // la category puede dejar afuera productos del mismo tipo clasificados en otra rama.
     let domId = sub?.domain || '';
-    let catId = domId ? '' : (sub?.cat || State.activeCat.mlCategory || '');
+    let catId = (domId || sub.noCat) ? '' : (sub?.cat || State.activeCat.mlCategory || '');
 
     State.loading = true;
     State.query = q;
@@ -1654,9 +1697,11 @@ const App = {
         total: data.total || 0, offers: data.offers || [],
       };
       renderPanel(product, data);
-      renderPanelTrend(product.id); // no bloquea el panel si falla o no hay historial todavia
       const prices = (data.offers || []).map(o => o.price).filter(v => v != null);
-      loadRelated(product.id, 'panelBody', prices.length ? Math.min(...prices) : null);
+      const refPrice = prices.length ? Math.min(...prices) : null;
+      $('panelBody').insertAdjacentHTML('afterbegin', cheaperControls(product.id, refPrice));
+      renderPanelTrend(product.id); // no bloquea el panel si falla o no hay historial todavia
+      loadRelated(product.id, 'panelBody', refPrice);
     } catch (e) {
       html($('panelBody'), `<div style="padding:30px 20px;color:var(--red);font-size:13px">${Fmt.esc(e.message)}</div>`);
     }
@@ -1668,6 +1713,46 @@ const App = {
     $('compPanel').setAttribute('aria-hidden', 'true');
     document.querySelectorAll('tbody tr').forEach(tr => tr.classList.remove('row-selected'));
     State.panelProduct = null;
+  },
+
+  /** "Ver más": revela la siguiente tanda de tarjetas ocultas de la grilla anterior al botón. */
+  showMore(btn) {
+    const wrap = btn.closest('.rel-more');
+    const grid = wrap?.previousElementSibling;
+    if (!grid) return;
+    const hidden = [...grid.querySelectorAll('.rel-hidden')];
+    hidden.slice(0, REL_PAGE).forEach(el => el.classList.remove('rel-hidden'));
+    const left = hidden.length - REL_PAGE;
+    if (left > 0) btn.textContent = `Ver más (${left})`; else wrap.remove();
+  },
+
+  /** "Encontrar similares más baratos": equivalentes con precio mínimo menor al de referencia. */
+  async findCheaper(btn) {
+    const wrap = btn.closest('.cheaper-wrap');
+    const res  = wrap?.querySelector('.cheaper-res');
+    if (!wrap || !res || btn.disabled) return;
+    const pid = wrap.dataset.pid;
+    const ref = Number(wrap.dataset.ref) || null;
+    btn.disabled = true;
+    res.innerHTML = `<div class="panel-loading"><div class="panel-spinner"></div><span>Buscando alternativas más baratas… (puede tardar unos segundos)</span></div>`;
+    try {
+      const d = await API.cheaper(pid, ref);
+      if (!wrap.isConnected) return;   // el panel cambió de producto mientras buscaba
+      if (!d.cheaper?.length) {
+        res.innerHTML = `<div class="empty-state" style="padding:16px"><div class="empty-sub">${Fmt.esc(d.error || `No hay alternativas más baratas que ${Fmt.price(d.reference_price)} entre las ${d.considered} analizadas${d.cheapest_found ? ` (la más barata encontrada sale ${Fmt.price(d.cheapest_found)}).` : '.'}`)}</div></div>`;
+        return;
+      }
+      const same = d.same_specs_count || 0;
+      const compact = !!wrap.closest('#compPanel');
+      res.innerHTML = `<div class="insight" style="margin:10px 0 12px"><div class="insight-icon i-op">↓</div><div class="insight-text">
+        <strong>${d.cheaper.length} alternativa${d.cheaper.length === 1 ? '' : 's'} más barata${d.cheaper.length === 1 ? '' : 's'}</strong> que ${Fmt.price(d.reference_price)}
+        (${same} con las mismas especificaciones). Ordenadas por coincidencia con este producto: primero las de mismas specs y las más parecidas.</div></div>
+        ${pagedGrid(d.cheaper.map(r => relatedCard(r, d.reference_price)), compact)}`;
+    } catch (e) {
+      if (wrap.isConnected) res.innerHTML = `<div class="empty-state" style="padding:16px"><div class="empty-sub">${Fmt.esc(e.message)}</div></div>`;
+    } finally {
+      btn.disabled = false;
+    }
   },
 
   setSort(v) { State.sortBy = v; renderProducts(); },
@@ -1958,9 +2043,12 @@ function renderMyBusiness(d) {
   $('selBizDays')?.addEventListener('change', () => App.loadMyBusiness());
 
   $('selCat')?.addEventListener('change', function () {
-    State.activeSub = State.activeCat.subcats[Number(this.value)] || State.activeCat.subcats[0];
+    State.activeSub = subFromSelect(this.value);
     const inp = $('inputQ');
-    if (inp) { inp.value = ''; inp.placeholder = `Buscar dentro de “${State.activeSub.label}”…`; }
+    if (inp) {
+      inp.value = '';
+      inp.placeholder = State.activeSub.noCat ? 'Escribí el producto exacto a buscar en todo el catálogo…' : `Buscar dentro de “${State.activeSub.label}”…`;
+    }
     loadTrends();
   });
 
